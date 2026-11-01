@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+
+# Secrets: only the .env.example templates are committed.
+.env
+.env.*
+!.env.example
+
+# Local MongoDB data created by `npm run db:dev`.
+.dev-db/
+
+*.log
+.DS_Store

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SitePulse Studio</title>
+<style>
+  :root { --bg:#12161b; --panel:#1b2128; --line:#2e3741; --fg:#f1f4f7; --muted:#9ba8b5; --cue:#ffd479; --rec:#e5484d; --ok:#46b37e; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,sans-serif; display:flex; flex-direction:column; }
+  #controls { padding:12px 16px; border-bottom:1px solid var(--line); background:var(--panel); display:grid; gap:10px; }
+  #preview { width:100%; aspect-ratio:16/9; background:#000; border-radius:6px; display:block; }
+  body.recording #preview { display:none; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button { font:600 15px system-ui,sans-serif; min-height:42px; padding:0 16px; border-radius:8px; border:1px solid var(--line); background:#28313b; color:var(--fg); cursor:pointer; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #record { background:var(--rec); border-color:var(--rec); flex:1; }
+  #ready { flex:1; }
+  #status { font-size:14px; color:var(--muted); min-height:21px; overflow-wrap:anywhere; }
+  #status.error { color:#ff9592; }
+  #status.good { color:var(--ok); }
+  #meter { flex:1; height:8px; background:#000; border-radius:4px; overflow:hidden; min-width:80px; }
+  #level { height:100%; width:0; background:var(--ok); }
+  label { font-size:13px; color:var(--muted); }
+  #script { flex:1; overflow-y:auto; padding:16px 20px 45vh; font-size:21px; line-height:1.45; }
+  #script h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:22px 0 6px; }
+  #script h2:first-child { margin-top:0; }
+  #script p { margin:0 0 12px; }
+  #script .cue { font-size:15px; font-weight:600; color:var(--cue); border-left:3px solid var(--cue); padding-left:10px; }
+  #countdown { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font-size:160px; font-weight:700; background:rgba(0,0,0,.75); }
+</style>
+</head>
+<body>
+<section id="controls">
+  <canvas id="preview" width="1920" height="1080" aria-label="Preview of the video"></canvas>
+  <div class="row">
+    <button id="ready" type="button">Turn on camera and choose screen</button>
+    <button id="record" type="button" disabled>Record</button>
+    <button id="open" type="button" hidden>Play video</button>
+  </div>
+  <div class="row"><label for="meter">Microphone</label><div id="meter"><div id="level"></div></div></div>
+  <div id="status" role="status">Step 1: click the button above and pick Entire Screen.</div>
+</section>
+
+<main id="script">
+  <h2>Opening</h2>
+  <p>If your website goes down, how do you find out? Too often, it's a customer who tells you.</p>
+  <p>This is SitePulse, a website uptime monitor I'm presenting today. It checks your sites every 60 seconds, records every result, and emails you when a site goes down and again when it comes back.</p>
+
+  <h2>What it does</h2>
+  <p class="cue">Show the Overview page</p>
+  <p>This is the dashboard. At the top you can see how many sites are up, any open incidents, uptime, and average response time.</p>
+  <p>One failed check doesn't mean a site is down, because that could just be a network blip. So SitePulse only marks a site down after 3 failures in a row, and up again after 2 successes. That avoids false alarms.</p>
+  <p>Uptime is also reported honestly. This tile says "Not enough data" because the project hasn't been monitoring for long. It would be easy to show 100%, but that wouldn't be true yet.</p>
+
+  <h2>Live demo</h2>
+  <p class="cue">Point to "Failing demo"</p>
+  <p>This monitor points at an address that always returns an error, so it's meant to fail. SitePulse has marked it down and opened an incident.</p>
+  <p class="cue">Open its details page, show the chart and incident</p>
+  <p>Here's its history. Failed checks are marked on the chart, and if monitoring stops, the chart shows a gap rather than pretending nothing happened.</p>
+  <p class="cue">Go to the demo terminal, run: npm run alert:test</p>
+  <p>Now for alerts. For this demo, emails go to a local test mail server rather than a real inbox. Here's a test email arriving. A real outage sends one email when it starts and one when it ends, not one every minute.</p>
+  <p class="cue">Add monitor, enter http://169.254.169.254/</p>
+  <p>Security matters here too, because this tool makes web requests to whatever address it's given. Someone could try to point it at private internal systems, like this address, so it refuses them.</p>
+
+  <h2>How it's built</h2>
+  <p>It's built on the MERN stack: MongoDB, Express, React and Node.</p>
+  <p>Three design choices are worth mentioning. First, several workers can run safely: each one claims a site before checking it, so two workers never check the same site at once.</p>
+  <p>Second, alerts survive crashes: they're saved to the database before sending, so a restart doesn't lose them, and a failed send is retried automatically.</p>
+  <p>Third, mail problems are visible: if an alert can't be sent, the dashboard says so, so you aren't left assuming everything is fine.</p>
+
+  <h2>Status and close</h2>
+  <p>The backend, dashboard and email alerts are all working, with 371 automated tests passing.</p>
+  <p>There's still work to do. It isn't deployed yet, it has only sent alerts through a local test mail server so far, and it has a single admin account. Next up are the final test pass and documentation, and then deployment.</p>
+  <p>So that's SitePulse: you find out about an outage before your customers tell you. Thank you.</p>
+  <p class="cue">Click Stop</p>
+</main>
+<div id="countdown" hidden></div>
+
+<script>
+  // The video is 1920x1080: the left of the screen, then a side column with the camera.
+  // The column replaces this window's area of the screen, so the script is never recorded.
+  const VIDEO_W = 1920, VIDEO_H = 1080, SCREEN_W = 1400, SIDE_W = VIDEO_W - SCREEN_W, CAM_H = Math.round(SIDE_W * 4 / 3);
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('preview'), ctx = canvas.getContext('2d', { alpha: false });
+  const screenVideo = Object.assign(document.createElement('video'), { muted: true, playsInline: true });
+  const cameraVideo = Object.assign(document.createElement('video'), { muted: true, playsInline: true });
+  let screenStream, cameraStream, recorder, session, uploads = Promise.resolve(), uploadFailed = false;
+
+  function say(text, tone = '') {
+    $('status').textContent = text;
+    $('status').className = tone;
+  }
+
+  function draw() {
+    ctx.fillStyle = '#12161b';
+    ctx.fillRect(0, 0, VIDEO_W, VIDEO_H);
+    if (screenVideo.videoWidth) {
+      const sw = screenVideo.videoWidth, sh = screenVideo.videoHeight;
+      ctx.drawImage(screenVideo, 0, 0, Math.min(sw, sh * SCREEN_W / VIDEO_H), sh, 0, 0, SCREEN_W, VIDEO_H);
+    }
+    if (cameraVideo.videoWidth) {
+      const cw = cameraVideo.videoWidth, ch = cameraVideo.videoHeight, wanted = ch * SIDE_W / CAM_H;
+      ctx.drawImage(cameraVideo, (cw - wanted) / 2, 0, wanted, ch, SCREEN_W, 0, SIDE_W, CAM_H);
+    }
+    ctx.fillStyle = '#f1f4f7';
+    ctx.font = '600 52px system-ui, sans-serif';
+    ctx.fillText('SitePulse', SCREEN_W + 40, CAM_H + 130);
+    ctx.fillStyle = '#9ba8b5';
+    ctx.font = '30px system-ui, sans-serif';
+    ctx.fillText('Website uptime monitor', SCREEN_W + 40, CAM_H + 185);
+  }
+
+  // A worker's timer keeps drawing when the browser would slow this window down.
+  const ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33)'])));
+  ticker.onmessage = draw;
+
+  function watchMicrophone(stream) {
+    const audio = new AudioContext();
+    audio.resume();
+    const analyser = audio.createAnalyser();
+    analyser.fftSize = 1024;
+    audio.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    setInterval(() => {
+      analyser.getByteTimeDomainData(samples);
+      const peak = samples.reduce((max, value) => Math.max(max, Math.abs(value - 128)), 0);
+      $('level').style.width = `${Math.min(100, peak * 1.6)}%`;
+    }, 80);
+  }
+
+  $('ready').onclick = async () => {
+    try {
+      say('Allow the camera and microphone, then pick Entire Screen.');
+      if (!cameraStream) {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        cameraVideo.srcObject = cameraStream;
+        await cameraVideo.play();
+        watchMicrophone(cameraStream);
+      }
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always', displaySurface: 'monitor', frameRate: 30 },
+        audio: false,
+      });
+      screenVideo.srcObject = screenStream;
+      await screenVideo.play();
+      screenStream.getVideoTracks()[0].onended = () => { if (recorder?.state === 'recording') stop(); };
+
+      const surface = screenStream.getVideoTracks()[0].getSettings().displaySurface;
+      if (surface && surface !== 'monitor') say('Pick Entire Screen, or the side panel will not line up. Click the button again.', 'error');
+      else say('Ready. Check the preview: no script should show, and the demo windows must fit on its left.', 'good');
+      $('record').disabled = false;
+    } catch (error) {
+      say(`Could not start: ${error.message}. Click the button to try again.`, 'error');
+    }
+  };
+
+  function post(path, body) {
+    return fetch(path, { method: 'POST', body }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      return data;
+    });
+  }
+
+  async function countdown() {
+    $('countdown').hidden = false;
+    for (const n of [3, 2, 1]) {
+      $('countdown').textContent = n;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    $('countdown').hidden = true;
+  }
+
+  async function start() {
+    $('record').disabled = true;
+    $('ready').disabled = true;
+    $('open').hidden = true;
+    uploadFailed = false;
+    uploads = Promise.resolve();
+    session = await post('/start');
+    await countdown();
+
+    const stream = new MediaStream([
+      ...canvas.captureStream(30).getVideoTracks(),
+      ...cameraStream.getAudioTracks(),
+    ]);
+    const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((type) => MediaRecorder.isTypeSupported(type));
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 160_000 });
+    // Saved every second, in order, so a crash loses at most a moment of the recording.
+    recorder.ondataavailable = ({ data }) => {
+      if (!data.size) return;
+      uploads = uploads.then(() => post(`/chunk?id=${session.id}`, data)).catch(() => { uploadFailed = true; });
+    };
+    recorder.onstop = finish;
+    recorder.start(1000);
+
+    document.body.classList.add('recording');
+    $('script').scrollTop = 0;
+    $('record').textContent = 'Stop';
+    $('record').disabled = false;
+    say('Recording. Scroll the script with your mouse wheel.', 'error');
+  }
+
+  function stop() {
+    $('record').disabled = true;
+    recorder.stop();
+  }
+
+  async function finish() {
+    document.body.classList.remove('recording');
+    say('Saving your video. This can take a minute or two...');
+    try {
+      await uploads;
+      const result = await post(`/finish?id=${session.id}`);
+      say(`${uploadFailed ? 'Saved, but part of the recording was lost. ' : 'Saved: '}${result.file} (${result.megabytes} MB)`, uploadFailed ? 'error' : 'good');
+      $('open').hidden = false;
+    } catch (error) {
+      say(`The video could not be finished: ${error.message}. The raw recording is in your Videos folder.`, 'error');
+    }
+    $('record').textContent = 'Record again';
+    $('record').disabled = false;
+    $('ready').disabled = false;
+  }
+
+  $('record').onclick = () => {
+    if (recorder?.state === 'recording') stop();
+    else start().catch((error) => {
+      say(`Could not start recording: ${error.message}`, 'error');
+      $('record').disabled = false;
+      $('ready').disabled = false;
+    });
+  };
+  $('open').onclick = () => post(`/open?id=${session.id}`);
+</script>
+</body>
+</html>
